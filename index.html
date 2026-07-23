@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fit Copilot</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+    textarea { width: 100%; height: 150px; font-size: 14px; padding: 8px; }
+    button { padding: 10px 20px; font-size: 14px; cursor: pointer; margin-top: 10px; }
+    .result { background: #f5f5f5; padding: 15px; margin-top: 20px; border-radius: 6px; white-space: pre-wrap; }
+    .loading { color: #888; font-style: italic; }
+    h1 { margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Fit Copilot</h1>
+  <p>Paste a job description below and see how you match.</p>
+
+  <textarea id="jdInput" placeholder="Paste job description here..."></textarea>
+  <br>
+  <button onclick="checkMatch()">Check My Fit</button>
+
+  <div id="result" class="result" style="display:none;"></div>
+
+  <script>
+    async function checkMatch() {
+      const jdText = document.getElementById('jdInput').value;
+      const resultDiv = document.getElementById('result');
+
+      if (!jdText.trim()) {
+        alert('Please paste a job description first.');
+        return;
+      }
+
+      resultDiv.style.display = 'block';
+      resultDiv.className = 'result loading';
+      resultDiv.innerText = 'Analyzing... (this may take 30-60 seconds on local AI)';
+
+      try {
+        const response = await fetch('http://127.0.0.1:8000/match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jd_text: jdText })
+        });
+
+        const data = await response.json();
+        resultDiv.className = 'result';
+        resultDiv.innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultDiv.className = 'result';
+        resultDiv.innerText = 'Error: ' + err.message + '\n\nMake sure the backend server is still running.';
+      }
+    }
+  </script>
+</body>
+</html>
