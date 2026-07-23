@@ -35,6 +35,15 @@
     <div id="matchStatus" class="status">Upload your resume first to enable this.</div>
   </div>
 
+  <div class="step">
+    <h3>Step 3: Analyze your whole job search (paste multiple JDs)</h3>
+    <p style="font-size: 13px; color: #666;">Paste multiple job descriptions below, separated by a line with just <code>---</code> between each one.</p>
+    <textarea id="batchJdInput" placeholder="Paste JD 1 here...&#10;---&#10;Paste JD 2 here...&#10;---&#10;Paste JD 3 here..." style="height: 200px;"></textarea>
+    <br>
+    <button id="analyzeBtn" onclick="analyzeJobSearch()" disabled>Find My Highest-Leverage Skill</button>
+    <div id="analyzeStatus" class="status">Upload your resume first to enable this.</div>
+  </div>
+
   <div id="result" class="result" style="display:none;"></div>
 
   <script>
@@ -69,6 +78,9 @@
 
         document.getElementById('matchBtn').disabled = false;
         document.getElementById('matchStatus').innerText = 'Ready — paste a JD and click Check My Fit.';
+
+        document.getElementById('analyzeBtn').disabled = false;
+        document.getElementById('analyzeStatus').innerText = 'Ready — paste multiple JDs and click Analyze.';
       } catch (err) {
         statusDiv.innerText = 'Upload failed: ' + err.message;
       }
@@ -100,6 +112,37 @@
         resultDiv.innerText = JSON.stringify(data, null, 2);
       } catch (err) {
         resultDiv.innerText = 'Error: ' + err.message + '\n\nMake sure the backend server is still running.';
+      }
+    }
+
+    async function analyzeJobSearch() {
+      const batchText = document.getElementById('batchJdInput').value;
+      const resultDiv = document.getElementById('result');
+
+      if (!batchText.trim()) {
+        alert('Please paste at least one job description.');
+        return;
+      }
+      if (!currentUserId) {
+        alert('Please upload your resume first.');
+        return;
+      }
+
+      const jdList = batchText.split('---').map(jd => jd.trim()).filter(jd => jd.length > 0);
+
+      resultDiv.style.display = 'block';
+      resultDiv.innerText = `Analyzing ${jdList.length} job descriptions... (this may take a minute)`;
+
+      try {
+        const response = await fetch(`${API_BASE}/analyze-job-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jd_list: jdList, user_id: currentUserId })
+        });
+        const data = await response.json();
+        resultDiv.innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        resultDiv.innerText = 'Error: ' + err.message;
       }
     }
   </script>

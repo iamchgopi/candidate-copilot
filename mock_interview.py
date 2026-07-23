@@ -25,7 +25,7 @@ Candidate's answer: {answer}
 Give brief, direct feedback: what was strong, what was missing, and one suggestion
 to make the answer sharper. Keep it to 3-4 sentences total.
 """
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+    response = client.models.generate_content(model="gemini-3.5-flash-lite", contents=prompt)
     return response.text.strip()
 
 

@@ -56,7 +56,7 @@ Return ONLY valid JSON in exactly this format:
   "gaps": ["...", "..."]
 }}
 """
-    response = call_gemini_with_retry(model="gemini-3.6-flash", contents=prompt)
+    response = call_gemini_with_retry(model="gemini-3.5-flash-lite", contents=prompt)
     raw = response.text
     start = raw.find("{")
     end = raw.rfind("}") + 1

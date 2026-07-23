@@ -1,3 +1,4 @@
+from aggregator import analyze_job_search
 import uuid
 import shutil
 import os
@@ -36,6 +37,14 @@ class FeedbackRequest(BaseModel):
     question: str
     answer: str
 
+class BatchJDRequest(BaseModel):
+    jd_list: list[str]
+    user_id: str
+
+
+@app.post("/analyze-job-search")
+def analyze_job_search_endpoint(req: BatchJDRequest):
+    return analyze_job_search(req.jd_list, user_id=req.user_id)
 
 @app.post("/upload-resume")
 async def upload_resume(file: UploadFile = File(...)):

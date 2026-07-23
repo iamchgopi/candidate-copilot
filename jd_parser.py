@@ -39,7 +39,7 @@ Return ONLY valid JSON, no other text, in exactly this format:
 Job Description:
 {jd_text}
 """
-    response = call_gemini_with_retry(model="gemini-3.6-flash", contents=prompt)
+    response = call_gemini_with_retry(model="gemini-3.5-flash-lite", contents=prompt)
     raw_output = response.text
 
     start = raw_output.find("{")
