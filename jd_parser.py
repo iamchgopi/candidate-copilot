@@ -1,5 +1,26 @@
-import ollama
+import os
 import json
+import time
+from google import genai
+from dotenv import load_dotenv
+
+load_dotenv()
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
+
+def call_gemini_with_retry(model, contents, max_retries=3):
+    """Retries Gemini calls on temporary server overload (503 errors)."""
+    for attempt in range(max_retries):
+        try:
+            return client.models.generate_content(model=model, contents=contents)
+        except Exception as e:
+            if "503" in str(e) and attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                print(f"Gemini busy, retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise
+
 
 def parse_jd(jd_text):
     prompt = f"""You are a job description parser. Read the job description below and extract structured information.
@@ -18,13 +39,9 @@ Return ONLY valid JSON, no other text, in exactly this format:
 Job Description:
 {jd_text}
 """
-    response = ollama.chat(
-        model="llama3.2",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw_output = response["message"]["content"]
+    response = call_gemini_with_retry(model="gemini-3.6-flash", contents=prompt)
+    raw_output = response.text
 
-    # Try to isolate JSON in case the model adds extra text
     start = raw_output.find("{")
     end = raw_output.rfind("}") + 1
     json_str = raw_output[start:end]
@@ -41,6 +58,5 @@ if __name__ == "__main__":
     Nice to have: exposure to Kubernetes, Docker, and observability tools like Grafana.
     This is a remote-friendly role.
     """
-
     result = parse_jd(sample_jd)
     print(json.dumps(result, indent=2))

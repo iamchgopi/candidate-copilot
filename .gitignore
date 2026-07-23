@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .env
 resume_data.py
+resume.pdf
+uploads/

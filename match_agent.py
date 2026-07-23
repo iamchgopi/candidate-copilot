@@ -1,30 +1,33 @@
-import ollama
 import json
 import chromadb
 from sentence_transformers import SentenceTransformer
-from jd_parser import parse_jd
+from jd_parser import parse_jd, call_gemini_with_retry
 
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection(name="resume")
+db_client = chromadb.PersistentClient(path="./chroma_db")
 
 
-def retrieve_evidence(query, n_results=3):
-    """Search your resume for the most relevant bullets to a given skill/requirement."""
+def get_user_collection(user_id):
+    return db_client.get_or_create_collection(name=f"resume_{user_id}")
+
+
+def retrieve_evidence(collection, query, n_results=3):
+    """Search a specific user's resume for the most relevant bullets to a given skill/requirement."""
     query_embedding = embed_model.encode(query).tolist()
     results = collection.query(query_embeddings=[query_embedding], n_results=n_results)
     return results["documents"][0]
 
 
-def match_jd(jd_text):
+def match_jd(jd_text, user_id):
     parsed_jd = parse_jd(jd_text)
+    collection = get_user_collection(user_id)
 
-  # Retrieve evidence separately for EACH must-have skill, so none get crowded out
     all_evidence = set()
     for skill in parsed_jd["must_have_skills"] + [parsed_jd["domain"]]:
-        for e in retrieve_evidence(skill, n_results=4):
+        for e in retrieve_evidence(collection, skill, n_results=4):
             all_evidence.add(e)
     evidence_text = "\n".join(f"- {e}" for e in all_evidence)
+
     prompt = f"""You are scoring how well a candidate's resume matches a job description.
 
 JOB REQUIREMENTS:
@@ -53,8 +56,8 @@ Return ONLY valid JSON in exactly this format:
   "gaps": ["...", "..."]
 }}
 """
-    response = ollama.chat(model="llama3.2", messages=[{"role": "user", "content": prompt}])
-    raw = response["message"]["content"]
+    response = call_gemini_with_retry(model="gemini-3.6-flash", contents=prompt)
+    raw = response.text
     start = raw.find("{")
     end = raw.rfind("}") + 1
     return json.loads(raw[start:end])
@@ -69,5 +72,5 @@ if __name__ == "__main__":
     Nice to have: exposure to Kubernetes, Docker, and observability tools like Grafana.
     This is a remote-friendly role.
     """
-    result = match_jd(sample_jd)
+    result = match_jd(sample_jd, user_id="test_user_1")
     print(json.dumps(result, indent=2))

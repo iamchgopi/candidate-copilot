@@ -1,5 +1,5 @@
-import ollama
-from jd_parser import parse_jd
+from jd_parser import parse_jd, client
+
 
 def generate_question(parsed_jd, asked_so_far):
     prompt = f"""You are a hiring manager interviewing a candidate for this role:
@@ -12,8 +12,8 @@ Questions already asked: {asked_so_far if asked_so_far else 'None yet'}
 Ask ONE new, specific interview question testing one of the must-have skills above.
 Do not repeat a topic already asked. Return ONLY the question text, nothing else.
 """
-    response = ollama.chat(model="llama3.2", messages=[{"role": "user", "content": prompt}])
-    return response["message"]["content"].strip()
+    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+    return response.text.strip()
 
 
 def judge_answer(question, answer):
@@ -25,8 +25,8 @@ Candidate's answer: {answer}
 Give brief, direct feedback: what was strong, what was missing, and one suggestion
 to make the answer sharper. Keep it to 3-4 sentences total.
 """
-    response = ollama.chat(model="llama3.2", messages=[{"role": "user", "content": prompt}])
-    return response["message"]["content"].strip()
+    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+    return response.text.strip()
 
 
 def run_interview(jd_text, num_questions=3):
@@ -55,4 +55,4 @@ if __name__ == "__main__":
     Nice to have: exposure to Kubernetes, Docker, and observability tools like Grafana.
     This is a remote-friendly role.
     """
-    run_interview(sample_jd, num_questions=3)
+    run_interview(sample_jd, num_questions=1)

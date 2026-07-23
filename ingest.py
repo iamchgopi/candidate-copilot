@@ -1,23 +1,30 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
-from resume_data import RESUME_CHUNKS
+from resume_extractor import extract_resume_text, chunk_resume_text
 
-print("Loading embedding model (first run downloads it, ~90MB, one-time)...")
-model = SentenceTransformer("all-MiniLM-L6-v2")
+embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+db_client = chromadb.PersistentClient(path="./chroma_db")
 
-print("Connecting to local ChromaDB (saves to ./chroma_db folder)...")
-client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection(name="resume")
 
-print(f"Embedding and storing {len(RESUME_CHUNKS)} resume chunks...")
-for chunk in RESUME_CHUNKS:
-    embedding = model.encode(chunk["text"]).tolist()
-    collection.upsert(
-        ids=[chunk["id"]],
-        embeddings=[embedding],
-        documents=[chunk["text"]],
-        metadatas=[{"source": chunk["source"]}],
-    )
+def ingest_resume(pdf_path, user_id):
+    """Extracts, chunks, embeds, and stores a resume under a specific user's collection."""
+    text = extract_resume_text(pdf_path)
+    chunks = chunk_resume_text(text)
 
-print("Done! Your resume is now searchable memory.")
-print(f"Total chunks stored: {collection.count()}")
+    collection_name = f"resume_{user_id}"
+    collection = db_client.get_or_create_collection(name=collection_name)
+
+    for chunk in chunks:
+        embedding = embed_model.encode(chunk["text"]).tolist()
+        collection.upsert(
+            ids=[chunk["id"]],
+            embeddings=[embedding],
+            documents=[chunk["text"]],
+        )
+
+    return len(chunks)
+
+
+if __name__ == "__main__":
+    count = ingest_resume("resume.pdf", user_id="test_user_1")
+    print(f"Stored {count} chunks for test_user_1")
