@@ -1,9 +1,8 @@
 import json
 import chromadb
-from sentence_transformers import SentenceTransformer
 from jd_parser import parse_jd, call_gemini_with_retry
+from ingest import get_embedding
 
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 db_client = chromadb.PersistentClient(path="./chroma_db")
 
 
@@ -13,7 +12,7 @@ def get_user_collection(user_id):
 
 def retrieve_evidence(collection, query, n_results=3):
     """Search a specific user's resume for the most relevant bullets to a given skill/requirement."""
-    query_embedding = embed_model.encode(query).tolist()
+    query_embedding = get_embedding(query)
     results = collection.query(query_embeddings=[query_embedding], n_results=n_results)
     return results["documents"][0]
 
