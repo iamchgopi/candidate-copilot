@@ -107,6 +107,7 @@
   }
   textarea:focus { outline: 2px solid var(--signal); outline-offset: 1px; }
   textarea::placeholder { color: var(--text-dim); }
+  textarea:disabled { opacity: 0.6; }
 
   button {
     font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.03em;
@@ -122,6 +123,7 @@
 
   .status { font-size: 13px; color: var(--text-dim); margin-top: 10px; font-family: 'JetBrains Mono', monospace; }
   .status.ready { color: var(--signal); }
+  .status.error { color: #E85D4A; }
 
   .spinner {
     display: inline-block; width: 12px; height: 12px; border: 2px solid var(--wire);
@@ -130,8 +132,7 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  #result { display: none; }
-  #result.side-visible { display: block; }
+  #result { display: block; }
   .result-placeholder {
     border: 1px dashed var(--wire); border-radius: 4px; padding: 24px; text-align: center;
     color: var(--text-dim); font-size: 13px;
@@ -181,6 +182,8 @@
 
   footer { text-align: center; margin-top: 40px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-dim); }
   footer a { color: var(--signal); text-decoration: none; }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 </style>
 </head>
 <body>
@@ -209,7 +212,7 @@
           <div class="filename-tag" id="filenameTag"></div>
         </label>
         <br>
-        <button onclick="uploadResume()">Upload</button>
+        <button id="uploadBtn" onclick="uploadResume()">Upload</button>
         <button class="ghost" onclick="resetAll()" style="margin-left: 8px;">Start over</button>
         <div id="uploadStatus" class="status"></div>
       </div>
@@ -245,7 +248,7 @@
           <div class="question-box" id="questionText"></div>
           <textarea id="answerInput" rows="4" placeholder="Type your answer..."></textarea>
           <br>
-          <button onclick="submitAnswer()">Submit answer</button>
+          <button id="submitAnswerBtn" onclick="submitAnswer()">Submit answer</button>
           <div id="feedbackWrap"></div>
           <button class="secondary" id="nextQBtn" style="display:none;" onclick="nextQuestion()">Next question</button>
         </div>
@@ -307,6 +310,11 @@
   }
 
   function spinner(text) { return `<span class="spinner"></span>${text}`; }
+
+  function setBusy(btn, busy, busyLabel, normalLabel) {
+    btn.disabled = busy;
+    if (busyLabel) btn.textContent = busy ? busyLabel : normalLabel;
+  }
 
   function chipList(items, must) {
     if (!items || !items.length) return `<span class="status">None listed</span>`;
@@ -374,7 +382,7 @@
   }
 
   function copyResult(btn) {
-    navigator.clipboard.writeText(btn.getAttribute('data-copy'));
+    navigator.clipboard.writeText(btn.getAttribute('data-copy')).catch(() => {});
     const original = btn.textContent;
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = original; }, 1500);
@@ -415,18 +423,27 @@
   async function uploadResume() {
     const fileInput = document.getElementById('resumeFile');
     const statusDiv = document.getElementById('uploadStatus');
+    const btn = document.getElementById('uploadBtn');
     if (!fileInput.files.length) { alert('Choose a PDF first.'); return; }
+    if (btn.disabled) return;
+
+    setBusy(btn, true, 'Uploading...', 'Upload');
     statusDiv.innerHTML = spinner('Processing resume...');
     statusDiv.className = 'status';
+
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
+
     try {
       const response = await fetch(`${API_BASE}/upload-resume`, { method: 'POST', body: formData });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const data = await response.json();
       currentUserId = data.user_id;
+
       statusDiv.textContent = `Indexed ${data.chunks_stored} sections.`;
       statusDiv.className = 'status ready';
       markStep(1, true);
+
       document.getElementById('matchBtn').disabled = false;
       document.getElementById('matchStatus').textContent = 'Ready.';
       document.getElementById('analyzeBtn').disabled = false;
@@ -434,63 +451,91 @@
       document.getElementById('startInterviewBtn').disabled = false;
       document.getElementById('interviewStatus').textContent = 'Paste a JD in "Test fit" above, then start.';
     } catch (err) {
-      statusDiv.textContent = 'Upload failed: ' + err.message;
+      statusDiv.textContent = 'Upload failed: ' + err.message + ' — try again.';
+      statusDiv.className = 'status error';
+    } finally {
+      setBusy(btn, false, 'Uploading...', 'Upload');
     }
   }
 
   async function checkMatch() {
     const jdText = document.getElementById('jdInput').value;
     const resultDiv = document.getElementById('result');
+    const btn = document.getElementById('matchBtn');
     if (!jdText.trim()) { alert('Paste a job description first.'); return; }
     if (!currentUserId) { alert('Upload your resume first.'); return; }
+    if (btn.disabled) return;
+
+    setBusy(btn, true, 'Checking...', 'Check my fit');
     resultDiv.innerHTML = `<div class="status">${spinner('Reading the job description...')}</div>`;
+
     try {
       const parseResp = await fetch(`${API_BASE}/parse-jd`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jd_text: jdText, user_id: currentUserId })
       });
+      if (!parseResp.ok) throw new Error(`Server returned ${parseResp.status}`);
       const parsedData = await parseResp.json();
       resultDiv.innerHTML = renderParsedJD(parsedData) + `<div class="status">${spinner('Scoring your fit against this...')}</div>`;
+
       const matchResp = await fetch(`${API_BASE}/match`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jd_text: jdText, user_id: currentUserId })
       });
+      if (!matchResp.ok) throw new Error(`Server returned ${matchResp.status}`);
       const matchData = await matchResp.json();
       resultDiv.innerHTML = renderParsedJD(parsedData) + renderMatchResult(matchData, parsedData.title);
       animateMeters(resultDiv);
       markStep(2, true);
     } catch (err) {
-      resultDiv.innerHTML = `<div class="status">Error: ${err.message}</div>`;
+      resultDiv.innerHTML = `<div class="status error">Error: ${err.message} — try again in a moment (the free server may be waking up).</div>`;
+    } finally {
+      setBusy(btn, false, 'Checking...', 'Check my fit');
     }
   }
 
   async function analyzeJobSearch() {
     const batchText = document.getElementById('batchJdInput').value;
     const resultDiv = document.getElementById('result');
+    const btn = document.getElementById('analyzeBtn');
     if (!batchText.trim()) { alert('Paste at least one job description.'); return; }
     if (!currentUserId) { alert('Upload your resume first.'); return; }
+    if (btn.disabled) return;
+
     const jdList = batchText.split('---').map(jd => jd.trim()).filter(jd => jd.length > 0);
+    if (!jdList.length) { alert('No valid job descriptions found — check your --- separators.'); return; }
+
+    setBusy(btn, true, 'Scanning...', 'Find my highest-leverage skill');
     resultDiv.innerHTML = `<div class="status">${spinner(`Scanning ${jdList.length} roles...`)}</div>`;
+
     try {
       const response = await fetch(`${API_BASE}/analyze-job-search`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jd_list: jdList, user_id: currentUserId })
       });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const data = await response.json();
       resultDiv.innerHTML = renderAggregateResult(data);
       markStep(3, true);
     } catch (err) {
-      resultDiv.innerHTML = `<div class="status">Error: ${err.message}</div>`;
+      resultDiv.innerHTML = `<div class="status error">Error: ${err.message} — try again in a moment.</div>`;
+    } finally {
+      setBusy(btn, false, 'Scanning...', 'Find my highest-leverage skill');
     }
   }
 
   async function startInterview() {
     const jdText = document.getElementById('jdInput').value;
+    const btn = document.getElementById('startInterviewBtn');
     if (!jdText.trim()) { alert('Paste a JD in the "Test fit" section first.'); return; }
+    if (btn.disabled) return;
+
+    setBusy(btn, true, 'Starting...', 'Start interview');
     askedSoFar = []; questionCount = 0;
     document.getElementById('interviewStatus').innerHTML = spinner('Generating question...');
     await fetchNextQuestion(jdText);
     markStep(4, true);
+    setBusy(btn, false, 'Starting...', 'Start interview');
   }
 
   async function fetchNextQuestion(jdText) {
@@ -499,10 +544,12 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jd_text: jdText, asked_so_far: askedSoFar })
       });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const data = await response.json();
       currentQuestion = data.question;
       askedSoFar.push(currentQuestion);
       questionCount++;
+
       document.getElementById('interviewStatus').textContent = '';
       document.getElementById('interviewBox').style.display = 'block';
       document.getElementById('qCount').textContent = `QUESTION ${questionCount}`;
@@ -511,32 +558,44 @@
       document.getElementById('feedbackWrap').innerHTML = '';
       document.getElementById('nextQBtn').style.display = 'none';
     } catch (err) {
-      document.getElementById('interviewStatus').textContent = 'Error: ' + err.message;
+      document.getElementById('interviewStatus').innerHTML = `<span class="status error">Error: ${err.message}</span>`;
     }
   }
 
   async function submitAnswer() {
     const answer = document.getElementById('answerInput').value;
+    const btn = document.getElementById('submitAnswerBtn');
     if (!answer.trim()) { alert('Type an answer first.'); return; }
+    if (btn.disabled) return;
+
+    setBusy(btn, true, 'Evaluating...', 'Submit answer');
     const feedbackWrap = document.getElementById('feedbackWrap');
     feedbackWrap.innerHTML = `<div class="status">${spinner('Evaluating your answer...')}</div>`;
+
     try {
       const response = await fetch(`${API_BASE}/interview/feedback`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: currentQuestion, answer: answer })
       });
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const data = await response.json();
       feedbackWrap.innerHTML = `<div class="feedback-box"><div class="feedback-label">Feedback</div>${data.feedback}</div>`;
       document.getElementById('nextQBtn').style.display = 'inline-block';
     } catch (err) {
-      feedbackWrap.innerHTML = `<div class="status">Error: ${err.message}</div>`;
+      feedbackWrap.innerHTML = `<div class="status error">Error: ${err.message}</div>`;
+    } finally {
+      setBusy(btn, false, 'Evaluating...', 'Submit answer');
     }
   }
 
   async function nextQuestion() {
     const jdText = document.getElementById('jdInput').value;
-    document.getElementById('interviewStatus').textContent = '';
+    const btn = document.getElementById('nextQBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    document.getElementById('interviewStatus').innerHTML = spinner('Loading next question...');
     await fetchNextQuestion(jdText);
+    btn.disabled = false;
   }
 </script>
 </body>
