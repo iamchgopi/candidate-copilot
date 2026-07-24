@@ -52,7 +52,7 @@ flowchart LR
 3. **Retrieve** — for every required skill, the system searches *your own* resume embeddings for the most relevant supporting evidence.
 4. **Score** — Gemini scores skill/domain/experience fit **using only that retrieved evidence**, with a one-line justification per dimension, and lists any skill it couldn't find evidence for as an honest gap.
 5. **Aggregate** (optional) — paste a batch of JDs at once, and the same scoring runs across all of them; a simple, deterministic tally (no LLM guessing) finds the one gap skill blocking the most roles.
-6. **Practice** (optional) — generate JD-specific mock interview questions and get direct feedback on typed answers.
+6. **Practice** (optional) — generate JD-specific mock interview questions and get direct feedback on typed or spoken answers (voice input via the browser's built-in speech recognition, with automatic silence detection).
 
 ## Try it yourself
 
@@ -154,6 +154,7 @@ Full interactive docs (Swagger UI) live at `/docs` on the deployed API.
 - **LLM scoring isn't perfectly deterministic** — identical repeated runs can vary by 5-15 points. This is inherent to LLM-based scoring, not a bug; a future version could show a score range instead of a single number to be transparent about this.
 - **`/match` re-parses the JD internally**, duplicating the `/parse-jd` call the frontend already made for display. Refactoring `/match` to accept an already-parsed JD would save one Gemini call per request.
 - **Cold starts** — the first request after ~15 minutes of inactivity takes 30-60s while Render wakes the free instance. A lightweight keepalive ping (or a paid instance) would remove this.
+- **Voice input works in Chrome/Edge only** — the mock interview's microphone feature uses the browser's native Web Speech API, which Safari and Firefox don't support. Those browsers fall back to typing, with a clear message rather than a silent failure.
 - **An MCP server wrapping this API** would let the whole pipeline run directly from Claude Desktop or Claude Code — a natural next step for anyone extending this.
 
 ## License
