@@ -174,6 +174,17 @@
   .feedback-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--signal); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
   .qcount { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
 
+  #micBtn.recording {
+    background: #E85D4A;
+    border-color: #E85D4A;
+    color: #fff;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
   .history-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 1px solid var(--wire); font-size: 12.5px; }
   .history-item:first-child { border-top: none; }
   .history-item .h-title { color: var(--paper); }
@@ -246,7 +257,11 @@
         <div id="interviewBox" style="display:none; margin-top:16px;">
           <div class="qcount" id="qCount"></div>
           <div class="question-box" id="questionText"></div>
-          <textarea id="answerInput" rows="4" placeholder="Type your answer..."></textarea>
+          <textarea id="answerInput" rows="4" placeholder="Type your answer, or use the mic below..."></textarea>
+          <div style="margin-top: 8px;">
+            <button id="micBtn" class="secondary small" onclick="toggleMic()" type="button">🎤 Speak answer</button>
+            <span id="micStatus" class="status" style="margin-left: 8px;"></span>
+          </div>
           <br>
           <button id="submitAnswerBtn" onclick="submitAnswer()">Submit answer</button>
           <div id="feedbackWrap"></div>
@@ -562,7 +577,107 @@
     }
   }
 
+  // ---------- Voice input (Web Speech API) ----------
+  let recognition = null;
+  let isRecording = false;
+  let silenceTimer = null;
+  const SILENCE_TIMEOUT_MS = 12000; // stop automatically after ~12s of no new speech
+
+  function initSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return null;
+
+    const rec = new SpeechRecognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    return rec;
+  }
+
+  function resetSilenceTimer() {
+    if (silenceTimer) clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => {
+      if (isRecording) stopRecording();
+    }, SILENCE_TIMEOUT_MS);
+  }
+
+  function toggleMic() {
+    const micBtn = document.getElementById('micBtn');
+    const micStatus = document.getElementById('micStatus');
+    const answerInput = document.getElementById('answerInput');
+
+    if (!recognition) {
+      recognition = initSpeechRecognition();
+      if (!recognition) {
+        micStatus.textContent = "Voice input isn't supported in this browser — try Chrome or Edge, or just type.";
+        micStatus.className = 'status error';
+        return;
+      }
+
+      let baseText = '';
+
+      recognition.onstart = () => {
+        isRecording = true;
+        micBtn.textContent = '⏹ Stop';
+        micBtn.classList.add('recording');
+        micStatus.textContent = 'Listening... (stops automatically after a pause)';
+        micStatus.className = 'status ready';
+        baseText = answerInput.value ? answerInput.value + ' ' : '';
+        resetSilenceTimer();
+      };
+
+      recognition.onresult = (event) => {
+        resetSilenceTimer();
+
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            final += transcript + ' ';
+          } else {
+            interim += transcript;
+          }
+        }
+        if (final) baseText += final;
+        answerInput.value = baseText + interim;
+      };
+
+      recognition.onerror = (event) => {
+        micStatus.textContent = event.error === 'not-allowed'
+          ? 'Microphone permission denied — check your browser settings.'
+          : 'Voice input error: ' + event.error;
+        micStatus.className = 'status error';
+        stopRecording();
+      };
+
+      recognition.onend = () => {
+        if (isRecording) {
+          recognition.start();
+        }
+      };
+    }
+
+    if (isRecording) {
+      stopRecording();
+    } else {
+      recognition.start();
+    }
+  }
+
+  function stopRecording() {
+    isRecording = false;
+    if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+    if (recognition) recognition.stop();
+    const micBtn = document.getElementById('micBtn');
+    const micStatus = document.getElementById('micStatus');
+    micBtn.textContent = '🎤 Speak answer';
+    micBtn.classList.remove('recording');
+    micStatus.textContent = '';
+  }
+
   async function submitAnswer() {
+    if (isRecording) stopRecording();
     const answer = document.getElementById('answerInput').value;
     const btn = document.getElementById('submitAnswerBtn');
     if (!answer.trim()) { alert('Type an answer first.'); return; }
@@ -589,6 +704,7 @@
   }
 
   async function nextQuestion() {
+    if (isRecording) stopRecording();
     const jdText = document.getElementById('jdInput').value;
     const btn = document.getElementById('nextQBtn');
     if (btn.disabled) return;

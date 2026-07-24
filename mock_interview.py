@@ -1,4 +1,4 @@
-from jd_parser import parse_jd, client
+from jd_parser import parse_jd, call_gemini_with_retry
 
 
 def generate_question(parsed_jd, asked_so_far):
@@ -12,7 +12,7 @@ Questions already asked: {asked_so_far if asked_so_far else 'None yet'}
 Ask ONE new, specific interview question testing one of the must-have skills above.
 Do not repeat a topic already asked. Return ONLY the question text, nothing else.
 """
-    response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+    response = call_gemini_with_retry(model="gemini-3.5-flash-lite", contents=prompt)
     return response.text.strip()
 
 
@@ -25,7 +25,7 @@ Candidate's answer: {answer}
 Give brief, direct feedback: what was strong, what was missing, and one suggestion
 to make the answer sharper. Keep it to 3-4 sentences total.
 """
-    response = client.models.generate_content(model="gemini-3.5-flash-lite", contents=prompt)
+    response = call_gemini_with_retry(model="gemini-3.5-flash-lite", contents=prompt)
     return response.text.strip()
 
 
